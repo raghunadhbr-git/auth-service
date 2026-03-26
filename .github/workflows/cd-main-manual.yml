@@ -1,0 +1,48 @@
+name: CD - Main Manual
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Enter tag"
+        required: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set Metadata
+        run: |
+          echo "TAG=${{ github.event.inputs.tag }}" >> $GITHUB_ENV
+          echo "URL=https://auth-service-production-416b.up.railway.app/" >> $GITHUB_ENV
+
+      - run: docker pull pythoncodelife/auth-service:${{ env.TAG }}
+
+      - name: Deploy
+        run: |
+          curl -X POST "https://backboard.railway.app/project/${{ secrets.RAILWAY_PROJECT_ID_STAGING }}/service/${{ secrets.RAILWAY_SERVICE_ID_STAGING }}/deploy" \
+          -H "Authorization: Bearer ${{ secrets.RAILWAY_API_TOKEN_STAGING }}"
+
+      - run: sleep 30
+
+      - name: Email
+        if: success()
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 587
+          username: ${{ secrets.MAIL_USERNAME_STAGING }}
+          password: ${{ secrets.MAIL_PASSWORD_STAGING }}
+          subject: "🚀 PROD DEPLOY - ${{ env.TAG }}"
+          to: ${{ secrets.MAIL_TO_STAGING }}
+          cc: ${{ secrets.MAIL_CC_STAGING }}
+          body: |
+            PROD DEPLOY SUCCESS 🚀
+
+            Tag: ${{ env.TAG }}
+
+            URL:
+            ${{ env.URL }}
