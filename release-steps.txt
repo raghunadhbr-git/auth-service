@@ -1,0 +1,15 @@
+▶️ TEST CASES (LOCAL)
+________________________________________
+✅ Case 1: No commits
+→ shows "No changes"
+→ asks continue?
+→ press n → exits safely
+________________________________________
+✅ Case 2: Skip manually
+Proceed? n
+→ exits cleanly
+________________________________________
+✅ Case 3: Full run
+→ tag created
+→ release created
+
