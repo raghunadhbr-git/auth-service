@@ -13,37 +13,52 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # ✅ IMPORTANT FIX: fetch full history + tags
       - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
 
       - name: Fetch Tags
         run: git fetch --tags
 
-      # ✅ Get latest tag
+      # ----------------------------------------
+      # Get Latest Tag (CORRECT NOW)
+      # ----------------------------------------
       - name: Get Latest Tag
-        id: tag
         run: |
-          LATEST=$(git describe --tags --abbrev=0 2>/dev/null || echo "v1.0.0")
-          echo "LATEST_TAG=$LATEST" >> $GITHUB_ENV
-          echo "📌 Latest tag: $LATEST"
+          LATEST_TAG=$(git tag --sort=-v:refname | head -n 1)
+          
+          if [ -z "$LATEST_TAG" ]; then
+            LATEST_TAG="v1.0.0"
+          fi
 
-      # ✅ Show changes
+          echo "LATEST_TAG=$LATEST_TAG" >> $GITHUB_ENV
+          echo "📌 Latest tag: $LATEST_TAG"
+
+      # ----------------------------------------
+      # Show Changes
+      # ----------------------------------------
       - name: Show Changes
         run: |
           echo "📜 Changes since last tag:"
           git log $LATEST_TAG..HEAD --oneline || echo "No changes"
 
-      # ✅ Increment version
+      # ----------------------------------------
+      # Increment Tag SAFELY
+      # ----------------------------------------
       - name: Increment Tag
         run: |
           VERSION=${LATEST_TAG#v}
           IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
           PATCH=$((PATCH+1))
-          NEW_TAG="v$MAJOR.$MINOR.$PATCH"
 
+          NEW_TAG="v$MAJOR.$MINOR.$PATCH"
           echo "NEW_TAG=$NEW_TAG" >> $GITHUB_ENV
           echo "💡 New tag: $NEW_TAG"
 
-      # ❗ Require confirmation
+      # ----------------------------------------
+      # Confirm Proceed
+      # ----------------------------------------
       - name: Check Proceed
         run: |
           if [ "${{ github.event.inputs.proceed }}" != "YES" ]; then
@@ -51,22 +66,31 @@ jobs:
             exit 0
           fi
 
-      # ✅ Create tag
+      # ----------------------------------------
+      # Create Tag (SAFE CHECK)
+      # ----------------------------------------
       - name: Create Tag
         run: |
+          if git rev-parse "$NEW_TAG" >/dev/null 2>&1; then
+            echo "⚠️ Tag already exists. Skipping..."
+            exit 0
+          fi
+
           git tag $NEW_TAG
           git push origin $NEW_TAG
           echo "✅ Tag created: $NEW_TAG"
 
-      # ✅ Create release
-      - name: Create Release
+      # ----------------------------------------
+      # Create Release
+      # ----------------------------------------
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ env.NEW_TAG }}
           name: "🚀 Release ${{ env.NEW_TAG }}"
           body: |
             Changes:
-            ${{ steps.tag.outputs.LATEST_TAG }}
+            See commit history in Actions logs
 
       - name: Done
-        run: echo "🎯 Release completed"
+        run: echo "🎯 Release completed successfully 🚀"
