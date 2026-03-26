@@ -2,10 +2,6 @@ name: CD - Main Manual
 
 on:
   workflow_dispatch:
-    inputs:
-      tag:
-        description: "Enter tag (v1.0.0 or commit SHA)"
-        required: true
 
 jobs:
   deploy:
@@ -13,16 +9,59 @@ jobs:
 
     steps:
       - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
 
-      - name: Set Metadata
+      # ----------------------------------------
+      # STEP 1: FETCH TAGS
+      # ----------------------------------------
+      - name: Fetch Tags
+        run: git fetch --tags
+
+      # ----------------------------------------
+      # STEP 2: GET LATEST TAG
+      # ----------------------------------------
+      - name: Get Latest Tag
         run: |
-          echo "TAG=${{ github.event.inputs.tag }}" >> $GITHUB_ENV
-          echo "IMAGE=pythoncodelife/auth-service:${{ github.event.inputs.tag }}" >> $GITHUB_ENV
+          LATEST=$(git tag --sort=-v:refname | head -n 1)
+
+          if [ -z "$LATEST" ]; then
+            echo "❌ No tags found"
+            exit 1
+          fi
+
+          echo "TAG=$LATEST" >> $GITHUB_ENV
+          echo "IMAGE=pythoncodelife/auth-service:$LATEST" >> $GITHUB_ENV
           echo "URL=https://auth-service-production-416b.up.railway.app/" >> $GITHUB_ENV
 
+          echo "--------------------------------"
+          echo "📌 Using Latest Tag: $LATEST"
+          echo "--------------------------------"
+
+      # ----------------------------------------
+      # STEP 3: VERIFY IMAGE EXISTS (IMPORTANT FIX)
+      # ----------------------------------------
+      - name: Check Docker Image Exists
+        run: |
+          echo "🔍 Checking image: $IMAGE"
+
+          if ! docker manifest inspect $IMAGE > /dev/null 2>&1; then
+            echo "❌ Image not found in Docker Hub: $IMAGE"
+            echo "👉 You must push image before deploy"
+            exit 1
+          fi
+
+          echo "✅ Image exists"
+
+      # ----------------------------------------
+      # STEP 4: PULL IMAGE
+      # ----------------------------------------
       - name: Pull Docker Image
         run: docker pull $IMAGE
 
+      # ----------------------------------------
+      # STEP 5: DEPLOY
+      # ----------------------------------------
       - name: Deploy to Railway
         run: |
           curl -X POST "https://backboard.railway.app/project/${{ secrets.RAILWAY_ENVIRONMENT_ID_STAGING }}/service/${{ secrets.RAILWAY_SERVICE_ID_STAGING }}/deploy" \
@@ -30,11 +69,22 @@ jobs:
 
       - run: sleep 30
 
+      # ----------------------------------------
+      # STEP 6: HEALTH CHECK
+      # ----------------------------------------
       - name: Health Check
         run: |
           RESPONSE=$(curl -s $URL)
           echo "RESPONSE=$RESPONSE" >> $GITHUB_ENV
 
+          echo "--------------------------------"
+          echo "🌐 Response:"
+          echo "$RESPONSE"
+          echo "--------------------------------"
+
+      # ----------------------------------------
+      # STEP 7: EMAIL
+      # ----------------------------------------
       - name: Email Success
         if: success()
         uses: dawidd6/action-send-mail@v3
@@ -58,3 +108,9 @@ jobs:
 
             Response:
             ${{ env.RESPONSE }}
+
+      # ----------------------------------------
+      # DONE
+      # ----------------------------------------
+      - name: Done
+        run: echo "🎯 DEPLOYMENT COMPLETED 🚀"
