@@ -1,9 +1,9 @@
 name: CD - Cron Latest Tag
 
 on:
-  workflow_dispatch:   # ✅ Enables manual run
+  workflow_dispatch:   # ✅ Manual trigger
   schedule:
-    - cron: "30 20 * * *"   # 2 AM IST
+    - cron: "30 20 * * *"   # ✅ 2 AM IST
 
 jobs:
   deploy:
@@ -11,7 +11,7 @@ jobs:
 
     steps:
       # ----------------------------------------
-      # Checkout full repo (IMPORTANT)
+      # Checkout full repo (needed for tags)
       # ----------------------------------------
       - name: Checkout
         uses: actions/checkout@v3
@@ -25,7 +25,7 @@ jobs:
         run: git fetch --tags
 
       # ----------------------------------------
-      # Get Latest Tag
+      # Get Latest Tag + Commit
       # ----------------------------------------
       - name: Get Latest Tag
         run: |
@@ -56,9 +56,10 @@ jobs:
           -H "Authorization: Bearer ${{ secrets.RAILWAY_API_TOKEN_STAGING }}"
 
       # ----------------------------------------
-      # Wait
+      # Wait for service to start
       # ----------------------------------------
-      - run: sleep 30
+      - name: Wait
+        run: sleep 30
 
       # ----------------------------------------
       # Health Check
@@ -96,5 +97,8 @@ jobs:
             Response:
             ${{ env.RESPONSE }}
 
+      # ----------------------------------------
+      # Done
+      # ----------------------------------------
       - name: Done
         run: echo "🎯 Latest tag deployed: ${{ env.TAG }}"
