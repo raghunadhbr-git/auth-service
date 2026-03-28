@@ -1,0 +1,80 @@
+
+name: 🧠 Pre-Deploy Validation
+
+on:
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Fetch Tags
+        run: git fetch --tags
+
+      - name: Get Latest Tag + Commit Info
+        run: |
+          TAG=$(git tag --sort=-v:refname | head -n 1)
+          echo "TAG=$TAG" >> $GITHUB_ENV
+
+          COMMIT=$(git rev-list -n 1 $TAG)
+          echo "COMMIT=$COMMIT" >> $GITHUB_ENV
+
+          MESSAGE=$(git log -1 --pretty=%B $COMMIT)
+          echo "MESSAGE=$MESSAGE" >> $GITHUB_ENV
+
+          DATE=$(git log -1 --format=%cd --date=iso $COMMIT)
+          echo "DATE=$DATE" >> $GITHUB_ENV
+
+          echo "📌 Latest Tag: $TAG"
+          echo "🔗 Commit SHA: $COMMIT"
+          echo "📝 Message: $MESSAGE"
+          echo "📅 Date: $DATE"
+
+      - name: Calculate Time Difference
+        run: |
+          NOW=$(date +%s)
+          COMMIT_TIME=$(date -d "$DATE" +%s)
+          DIFF=$((NOW - COMMIT_TIME))
+
+          MIN=$((DIFF / 60))
+          HOUR=$((DIFF / 3600))
+          DAY=$((DIFF / 86400))
+
+          if [ $MIN -lt 60 ]; then
+            echo "⏱️ Pushed: $MIN minutes ago"
+          elif [ $HOUR -lt 24 ]; then
+            echo "⏱️ Pushed: $HOUR hours ago"
+          else
+            echo "⏱️ Pushed: $DAY days ago"
+          fi
+
+      - name: Check Docker Image Exists
+        run: |
+          IMAGE="pythoncodelife/auth-service:$TAG"
+          echo "📦 Checking Docker Image: $IMAGE"
+
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+          https://hub.docker.com/v2/repositories/pythoncodelife/auth-service/tags/$TAG)
+
+          if [ "$STATUS" = "200" ]; then
+            echo "✅ Image FOUND in Docker Hub"
+            echo "READY=true" >> $GITHUB_ENV
+          else
+            echo "❌ Image NOT FOUND"
+            echo "READY=false" >> $GITHUB_ENV
+          fi
+
+      - name: Final Decision
+        run: |
+          if [ "$READY" = "true" ]; then
+            echo "🚀 STATUS: SAFE TO DEPLOY"
+          else
+            echo "⚠️ STATUS: DO NOT DEPLOY"
+            echo "Wait for CI to finish building image"
+          fi
