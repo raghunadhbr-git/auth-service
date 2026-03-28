@@ -13,9 +13,11 @@ jobs:
       # ==========================================
       - name: 🚀 Start Validation
         run: |
-          echo "=========================================="
+          echo ""
+          echo "=================================================="
           echo "🧠 PRE-DEPLOY VALIDATION STARTED"
-          echo "=========================================="
+          echo "=================================================="
+          echo ""
 
       # ==========================================
       # CHECKOUT
@@ -29,71 +31,94 @@ jobs:
       # FETCH TAGS
       # ==========================================
       - name: 🔄 Fetch Tags
-        run: git fetch --tags
+        run: |
+          git fetch --tags
+          echo "✅ Tags fetched"
 
       # ==========================================
       # GET TAG + COMMIT
       # ==========================================
-      - name: 🔍 Get Latest Tag + Commit Info
+      - name: 🔍 Detect Latest Tag
         run: |
           TAG=$(git tag --sort=-v:refname | head -n 1)
 
           if [ -z "$TAG" ]; then
-            echo "❌ ERROR: No tags found"
+            echo "❌ NO TAG FOUND"
             exit 1
           fi
 
-          echo "TAG=$TAG" >> $GITHUB_ENV
-
           COMMIT=$(git rev-list -n 1 $TAG)
-          echo "COMMIT=$COMMIT" >> $GITHUB_ENV
-
           MESSAGE=$(git log -1 --pretty=%s $COMMIT)
+
+          echo "TAG=$TAG" >> $GITHUB_ENV
+          echo "COMMIT=$COMMIT" >> $GITHUB_ENV
           echo "MESSAGE=$MESSAGE" >> $GITHUB_ENV
 
-          DATE=$(git log -1 --format=%cd --date=iso $COMMIT)
-          echo "DATE=$DATE" >> $GITHUB_ENV
-
-          echo "📌 TAG: $TAG"
-          echo "🔗 COMMIT: $COMMIT"
-          echo "📝 MESSAGE: $MESSAGE"
-          echo "📅 DATE: $DATE"
+          echo ""
+          echo "================ TAG DETAILS ================"
+          echo "🏷️  TAG        : $TAG"
+          echo "🔗 COMMIT     : $COMMIT"
+          echo "📝 MESSAGE    : $MESSAGE"
+          echo "============================================"
+          echo ""
 
       # ==========================================
       # DOCKER CHECK
       # ==========================================
-      - name: 🐳 Check Docker Image Exists
+      - name: 🐳 Check Docker Image
         run: |
+          echo ""
+          echo "=============== DOCKER CHECK ==============="
+
           IMAGE="pythoncodelife/auth-service:$TAG"
+          echo "📦 Checking Image: $IMAGE"
 
           STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
           https://hub.docker.com/v2/repositories/pythoncodelife/auth-service/tags/$TAG)
 
           if [ "$STATUS" = "200" ]; then
+            echo "✅ IMAGE FOUND"
             echo "READY=true" >> $GITHUB_ENV
           else
+            echo "❌ IMAGE NOT FOUND"
             echo "READY=false" >> $GITHUB_ENV
           fi
 
+          echo "============================================"
+          echo ""
+
       # ==========================================
-      # FINAL DECISION LOG
+      # FINAL DECISION (LOGS)
       # ==========================================
-      - name: 🧠 Final Decision
+      - name: 🧠 FINAL RESULT
         run: |
-          echo "=========================================="
+          echo ""
+          echo "=================================================="
+          echo "🚀 FINAL DEPLOYMENT STATUS"
+          echo "=================================================="
 
           if [ "$READY" = "true" ]; then
-            echo "✅ SAFE TO DEPLOY 🚀"
+            echo ""
+            echo "✅ STATUS: SAFE TO DEPLOY 🚀"
+            echo "👉 YOU CAN DEPLOY THIS VERSION NOW 💯"
           else
-            echo "❌ NOT READY ❌"
+            echo ""
+            echo "❌ STATUS: NOT READY"
+            echo "⏳ WAIT FOR CI TO COMPLETE"
           fi
 
-          echo "=========================================="
+          echo ""
+          echo "🏷️ TAG    : $TAG"
+          echo "🔗 COMMIT : $COMMIT"
+          echo "📝 MESSAGE: $MESSAGE"
+          echo ""
+          echo "=================================================="
+          echo ""
 
       # ==========================================
       # EMAIL SUCCESS
       # ==========================================
-      - name: 📧 Email - Ready to Deploy
+      - name: 📧 Email - READY
         if: env.READY == 'true'
         uses: dawidd6/action-send-mail@v3
         with:
@@ -106,23 +131,30 @@ jobs:
           cc: ${{ secrets.MAIL_CC_STAGING }}
           from: ${{ secrets.MAIL_USERNAME_STAGING }}
           body: |
+            ==================================================
             🧠 PRE-DEPLOY VALIDATION SUCCESS
+            ==================================================
 
             ✅ SAFE TO DEPLOY 🚀
 
-            Tag: ${{ env.TAG }}
-            Commit: ${{ env.COMMIT }}
-            Message: ${{ env.MESSAGE }}
+            🎯 ACTION:
+            You can now trigger CD deployment safely.
 
-            Docker Image:
+            ----------------------------------------------
+            🏷️ TAG       : ${{ env.TAG }}
+            🔗 COMMIT    : ${{ env.COMMIT }}
+            📝 MESSAGE   : ${{ env.MESSAGE }}
+            ----------------------------------------------
+
+            📦 Docker Image:
             pythoncodelife/auth-service:${{ env.TAG }}
 
-            🎯 You can now trigger CD deployment safely.
+            ==================================================
 
       # ==========================================
       # EMAIL FAILURE
       # ==========================================
-      - name: 📧 Email - Not Ready
+      - name: 📧 Email - NOT READY
         if: env.READY == 'false'
         uses: dawidd6/action-send-mail@v3
         with:
@@ -135,14 +167,22 @@ jobs:
           cc: ${{ secrets.MAIL_CC_STAGING }}
           from: ${{ secrets.MAIL_USERNAME_STAGING }}
           body: |
+            ==================================================
             ⚠️ PRE-DEPLOY VALIDATION FAILED
+            ==================================================
 
             ❌ NOT SAFE TO DEPLOY
 
-            Tag: ${{ env.TAG }}
-            Commit: ${{ env.COMMIT }}
-            Message: ${{ env.MESSAGE }}
+            🎯 ACTION:
+            Wait for CI to complete, then retry.
 
-            Docker image not available yet.
+            ----------------------------------------------
+            🏷️ TAG       : ${{ env.TAG }}
+            🔗 COMMIT    : ${{ env.COMMIT }}
+            📝 MESSAGE   : ${{ env.MESSAGE }}
+            ----------------------------------------------
 
-            ⏳ Wait for CI to complete, then retry.
+            📦 Docker Image:
+            pythoncodelife/auth-service:${{ env.TAG }}
+
+            ==================================================
