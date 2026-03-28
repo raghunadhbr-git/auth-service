@@ -5,11 +5,11 @@ on:
     branches:
       - "**"
     tags:
-      - "v*"     # ✅ MAIN trigger for tags (CLI + workflows)
+      - "v*"
 
   create:
     tags:
-      - "v*"     # ✅ Backup for UI-created tags
+      - "v*"
 
   pull_request:
 
@@ -29,12 +29,20 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v3
 
+      # ==========================================================
+      # 🔥 METADATA (ENHANCED)
+      # ==========================================================
       - name: Set Metadata
         run: |
           echo "REF=${GITHUB_REF}" >> $GITHUB_ENV
           echo "COMMIT=${GITHUB_SHA}" >> $GITHUB_ENV
+          echo "SHORT_SHA=${GITHUB_SHA::7}" >> $GITHUB_ENV
           echo "IMAGE=pythoncodelife/auth-service:${GITHUB_SHA}" >> $GITHUB_ENV
           echo "URL=https://auth-service-production-416b.up.railway.app/" >> $GITHUB_ENV
+
+          echo "COMMIT_MSG=$(git log -1 --pretty=%s)" >> $GITHUB_ENV
+          echo "COMMIT_DESC=$(git log -1 --pretty=%b)" >> $GITHUB_ENV
+          echo "COMMIT_TIME=$(git log -1 --pretty=%cd)" >> $GITHUB_ENV
 
           if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
             echo "IS_TAG=true" >> $GITHUB_ENV
@@ -44,19 +52,29 @@ jobs:
             echo "BRANCH=${GITHUB_REF#refs/heads/}" >> $GITHUB_ENV
           fi
 
+      # ==========================================================
+      # 🔥 LOGS (GITHUB ACTIONS UI)
+      # ==========================================================
       - name: Show Execution Info
         run: |
+          echo "======================================="
           echo "🚀 CI TRIGGERED"
-          echo "Ref: $REF"
-          echo "Commit: $COMMIT"
+          echo "======================================="
 
           if [ "$IS_TAG" = "true" ]; then
-            echo "Type: TAG BUILD"
-            echo "Tag: $TAG"
+            echo "🏷️ TYPE: TAG BUILD"
+            echo "🔥 TAG: $TAG"
+            echo "📦 Docker Push Enabled"
           else
-            echo "Type: BRANCH BUILD"
-            echo "Branch: $BRANCH"
+            echo "🌿 TYPE: BRANCH BUILD"
+            echo "🌱 BRANCH: $BRANCH"
           fi
+
+          echo "---------------------------------------"
+          echo "🧾 Commit Message: $COMMIT_MSG"
+          echo "🕒 Time: $COMMIT_TIME"
+          echo "🔑 SHA: $SHORT_SHA"
+          echo "---------------------------------------"
 
       - name: Docker Login
         run: |
@@ -82,6 +100,9 @@ jobs:
           docker tag $IMAGE pythoncodelife/auth-service:${TAG}
           docker push pythoncodelife/auth-service:${TAG}
 
+      # ==========================================================
+      # 🔥 EMAIL SUCCESS (ENHANCED ✔)
+      # ==========================================================
       - name: Email Success
         if: success()
         uses: dawidd6/action-send-mail@v3
@@ -90,22 +111,64 @@ jobs:
           server_port: 587
           username: ${{ secrets.MAIL_USERNAME_DEV }}
           password: ${{ secrets.MAIL_PASSWORD_DEV }}
-          subject: "✅ CI SUCCESS 🚀"
+          subject: ${{ env.IS_TAG == 'true' && '🚀 TAG RELEASE SUCCESS' || '✅ CI BUILD SUCCESS' }}
           to: ${{ secrets.MAIL_TO_DEV }}
           cc: ${{ secrets.MAIL_CC_DEV }}
           from: ${{ secrets.MAIL_USERNAME_DEV }}
           body: |
-            CI SUCCESS 🚀
+            =======================================
+            🚀 CI PIPELINE SUCCESS
+            =======================================
 
-            Ref: ${{ env.REF }}
-            Commit: ${{ env.COMMIT }}
+            ✔ Trigger Type: ${{ env.IS_TAG == 'true' && 'Tag Based CI' || 'Branch Based CI' }}
+            ✔ ${{ env.IS_TAG == 'true' && format('Tag: {0}', env.TAG) || format('Branch: {0}', env.BRANCH) }}
 
-            Docker Image:
-            ${{ env.IMAGE }}
+            ---------------------------------------
 
-            URL:
-            ${{ env.URL }}
+            ✔ Commit Message:
+              ➤ ${{ env.COMMIT_MSG }}
 
+            ✔ Commit SHA:
+              ➤ ${{ env.SHORT_SHA }}
+
+            ✔ Commit Time:
+              ➤ ${{ env.COMMIT_TIME }}
+
+            ---------------------------------------
+
+            ✔ Docker Image:
+              ➤ ${{ env.IMAGE }}
+
+            ${{ env.IS_TAG == 'true' && format('✔ Version Released:\n  ➤ {0}', env.TAG) || '✔ Latest Image Updated' }}
+
+            ---------------------------------------
+
+            ✔ Service URL:
+              ➤ ${{ env.URL }}
+
+            =======================================
+            🎉 STATUS: SUCCESS
+            ✔ CI Completed Successfully
+            =======================================
+
+      # ==========================================================
+      # ❌ EMAIL FAILURE
+      # ==========================================================
       - name: Email Failure
         if: failure()
         uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 587
+          username: ${{ secrets.MAIL_USERNAME_DEV }}
+          password: ${{ secrets.MAIL_PASSWORD_DEV }}
+          subject: "❌ CI FAILED"
+          to: ${{ secrets.MAIL_TO_DEV }}
+          from: ${{ secrets.MAIL_USERNAME_DEV }}
+          body: |
+            ❌ CI FAILED
+
+            🔍 Ref: ${{ env.REF }}
+            🔑 SHA: ${{ env.SHORT_SHA }}
+
+            Check GitHub Actions logs immediately 🚨
