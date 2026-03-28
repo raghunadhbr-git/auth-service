@@ -29,9 +29,7 @@ jobs:
       # FETCH TAGS
       # ==========================================
       - name: 🔄 Fetch Tags
-        run: |
-          git fetch --tags
-          echo "✅ Tags fetched successfully"
+        run: git fetch --tags
 
       # ==========================================
       # GET TAG + COMMIT
@@ -41,7 +39,7 @@ jobs:
           TAG=$(git tag --sort=-v:refname | head -n 1)
 
           if [ -z "$TAG" ]; then
-            echo "❌ ERROR: No tags found in repository"
+            echo "❌ ERROR: No tags found"
             exit 1
           fi
 
@@ -53,58 +51,13 @@ jobs:
           MESSAGE=$(git log -1 --pretty=%s $COMMIT)
           echo "MESSAGE=$MESSAGE" >> $GITHUB_ENV
 
-          DESC=$(git log -1 --pretty=%b $COMMIT)
-          echo "DESC=$DESC" >> $GITHUB_ENV
-
           DATE=$(git log -1 --format=%cd --date=iso $COMMIT)
           echo "DATE=$DATE" >> $GITHUB_ENV
 
-          echo "=========================================="
-          echo "📌 LATEST TAG DETECTED"
-          echo "------------------------------------------"
-          echo "🏷️  TAG       : $TAG"
-          echo "🔗 COMMIT    : $COMMIT"
-          echo "📝 MESSAGE   : $MESSAGE"
-
-          if [ -n "$DESC" ]; then
-            echo "📄 DESC      : $DESC"
-          else
-            echo "📄 DESC      : (No description)"
-          fi
-
-          echo "📅 DATE      : $DATE"
-          echo "=========================================="
-
-      # ==========================================
-      # TIME CHECK
-      # ==========================================
-      - name: ⏱️ Calculate Time Difference
-        run: |
-          NOW=$(date +%s)
-          COMMIT_TIME=$(date --date="$DATE" +%s 2>/dev/null || echo 0)
-
-          if [ "$COMMIT_TIME" = "0" ]; then
-            echo "⚠️ Could not parse commit date"
-          else
-            DIFF=$((NOW - COMMIT_TIME))
-            MIN=$((DIFF / 60))
-            HOUR=$((DIFF / 3600))
-            DAY=$((DIFF / 86400))
-
-            echo "=========================================="
-            echo "⏱️ DEPLOYMENT FRESHNESS CHECK"
-            echo "------------------------------------------"
-
-            if [ $MIN -lt 60 ]; then
-              echo "🕒 Pushed: $MIN minutes ago"
-            elif [ $HOUR -lt 24 ]; then
-              echo "🕒 Pushed: $HOUR hours ago"
-            else
-              echo "🕒 Pushed: $DAY days ago"
-            fi
-
-            echo "=========================================="
-          fi
+          echo "📌 TAG: $TAG"
+          echo "🔗 COMMIT: $COMMIT"
+          echo "📝 MESSAGE: $MESSAGE"
+          echo "📅 DATE: $DATE"
 
       # ==========================================
       # DOCKER CHECK
@@ -113,43 +66,83 @@ jobs:
         run: |
           IMAGE="pythoncodelife/auth-service:$TAG"
 
-          echo "=========================================="
-          echo "🐳 DOCKER IMAGE VALIDATION"
-          echo "------------------------------------------"
-          echo "📦 IMAGE: $IMAGE"
-
           STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
           https://hub.docker.com/v2/repositories/pythoncodelife/auth-service/tags/$TAG)
 
           if [ "$STATUS" = "200" ]; then
-            echo "✅ IMAGE FOUND in Docker Hub"
             echo "READY=true" >> $GITHUB_ENV
           else
-            echo "⚠️ Image check failed (maybe not pushed yet or API issue)"
             echo "READY=false" >> $GITHUB_ENV
           fi
 
-          echo "=========================================="
-
       # ==========================================
-      # FINAL DECISION
+      # FINAL DECISION LOG
       # ==========================================
       - name: 🧠 Final Decision
         run: |
           echo "=========================================="
-          echo "🚀 FINAL DEPLOYMENT DECISION"
-          echo "------------------------------------------"
 
           if [ "$READY" = "true" ]; then
             echo "✅ SAFE TO DEPLOY 🚀"
-            echo "🎯 Latest tag is ready and image exists"
-            echo "👉 You can now trigger CD workflow safely"
           else
-            echo "❌ NOT SAFE TO DEPLOY"
-            echo "⚠️ Docker image not available yet"
-            echo "⏳ Wait for CI to complete"
+            echo "❌ NOT READY ❌"
           fi
 
           echo "=========================================="
-          echo "🏁 VALIDATION COMPLETED"
-          echo "=========================================="
+
+      # ==========================================
+      # EMAIL SUCCESS
+      # ==========================================
+      - name: 📧 Email - Ready to Deploy
+        if: env.READY == 'true'
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 587
+          username: ${{ secrets.MAIL_USERNAME_STAGING }}
+          password: ${{ secrets.MAIL_PASSWORD_DEV }}
+          subject: "🚀 READY TO DEPLOY - ${{ env.TAG }}"
+          to: ${{ secrets.MAIL_TO_STAGING }}
+          cc: ${{ secrets.MAIL_CC_STAGING }}
+          from: ${{ secrets.MAIL_USERNAME_STAGING }}
+          body: |
+            🧠 PRE-DEPLOY VALIDATION SUCCESS
+
+            ✅ SAFE TO DEPLOY 🚀
+
+            Tag: ${{ env.TAG }}
+            Commit: ${{ env.COMMIT }}
+            Message: ${{ env.MESSAGE }}
+
+            Docker Image:
+            pythoncodelife/auth-service:${{ env.TAG }}
+
+            🎯 You can now trigger CD deployment safely.
+
+      # ==========================================
+      # EMAIL FAILURE
+      # ==========================================
+      - name: 📧 Email - Not Ready
+        if: env.READY == 'false'
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 587
+          username: ${{ secrets.MAIL_USERNAME_STAGING }}
+          password: ${{ secrets.MAIL_PASSWORD_DEV }}
+          subject: "⚠️ NOT READY - WAIT FOR CI"
+          to: ${{ secrets.MAIL_TO_STAGING }}
+          cc: ${{ secrets.MAIL_CC_STAGING }}
+          from: ${{ secrets.MAIL_USERNAME_STAGING }}
+          body: |
+            ⚠️ PRE-DEPLOY VALIDATION FAILED
+
+            ❌ NOT SAFE TO DEPLOY
+
+            Tag: ${{ env.TAG }}
+            Commit: ${{ env.COMMIT }}
+            Message: ${{ env.MESSAGE }}
+
+            Docker image not available yet.
+
+            ⏳ Wait for CI to complete, then retry.
